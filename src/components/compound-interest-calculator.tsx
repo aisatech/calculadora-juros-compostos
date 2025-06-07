@@ -1,10 +1,11 @@
+
 "use client";
 
 import * as React from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, type SubmitHandler } from "react-hook-form";
 import * as z from "zod";
-import { CircleDollarSign, Percent, CalendarDays, Repeat, CalculatorIcon, TrendingUp, BarChartBig } from "lucide-react";
+import { CircleDollarSign, Percent, CalendarDays, Repeat, CalculatorIcon, TrendingUp, BarChartBig, PiggyBank } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -46,6 +47,9 @@ const formSchema = z.object({
   principal: z.coerce
     .number({ invalid_type_error: "Valor inválido." })
     .min(0.01, "O valor principal deve ser positivo."),
+  monthlyContribution: z.coerce
+    .number({ invalid_type_error: "Valor inválido para aporte mensal." })
+    .min(0, "O aporte mensal não pode ser negativo."),
   annualRate: z.coerce
     .number({ invalid_type_error: "Valor inválido." })
     .min(0, "A taxa de juros não pode ser negativa."),
@@ -64,6 +68,7 @@ interface GrowthRecord {
   year: number;
   startingBalance: number;
   interestEarned: number;
+  contributionsThisYear: number;
   endingBalance: number;
 }
 
@@ -76,12 +81,13 @@ const compoundingOptions = [
 ];
 
 const formatCurrency = (value: number) => {
-  return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 };
 
 export default function CompoundInterestCalculator() {
   const [futureValue, setFutureValue] = React.useState<number | null>(null);
   const [totalInterest, setTotalInterest] = React.useState<number | null>(null);
+  const [totalContributions, setTotalContributions] = React.useState<number | null>(null);
   const [growthTableData, setGrowthTableData] = React.useState<GrowthRecord[]>([]);
   const [isCalculating, setIsCalculating] = React.useState(false);
 
@@ -89,6 +95,7 @@ export default function CompoundInterestCalculator() {
     resolver: zodResolver(formSchema),
     defaultValues: {
       principal: 1000,
+      monthlyContribution: 100,
       annualRate: 5,
       years: 10,
       compoundingFrequency: 12,
@@ -98,31 +105,72 @@ export default function CompoundInterestCalculator() {
   const onSubmit: SubmitHandler<FormValues> = (data) => {
     setIsCalculating(true);
     
-    const { principal, annualRate, years, compoundingFrequency } = data;
+    const { principal, monthlyContribution, annualRate, years, compoundingFrequency } = data;
     const rateDecimal = annualRate / 100;
+    const pmt = monthlyContribution || 0;
 
-    const ratePerPeriod = rateDecimal / compoundingFrequency;
-    const numberOfPeriods = years * compoundingFrequency;
-    const calculatedFutureValue = principal * Math.pow(1 + ratePerPeriod, numberOfPeriods);
+    // Calculate total future value
+    let calculatedFutureValue = principal;
+    const ratePerCompoundingPeriod = rateDecimal / compoundingFrequency;
+    const totalCompoundingPeriods = years * compoundingFrequency;
+    const totalMonths = years * 12;
+
+    // FV of initial principal
+    calculatedFutureValue = principal * Math.pow(1 + ratePerCompoundingPeriod, totalCompoundingPeriods);
+
+    // FV of monthly contributions series
+    if (pmt > 0) {
+      let fvContributionsSeries = 0;
+      for (let k = 0; k < totalMonths; k++) { // k is the month index from 0 to totalMonths-1
+        // Contribution pmt is made at the end of month (k+1)
+        // Time it earns interest in years: (totalMonths - (k + 1)) / 12.0
+        const timeInYearsForThisPmt = (totalMonths - (k + 1)) / 12.0;
+        // Number of compounding periods this pmt will earn interest for
+        const numCompPeriodsForThisPmt = timeInYearsForThisPmt * compoundingFrequency;
+        fvContributionsSeries += pmt * Math.pow(1 + ratePerCompoundingPeriod, numCompPeriodsForThisPmt);
+      }
+      calculatedFutureValue += fvContributionsSeries;
+    }
     
+    const totalContributionsMade = pmt * totalMonths;
     setFutureValue(calculatedFutureValue);
-    setTotalInterest(calculatedFutureValue - principal);
+    setTotalInterest(calculatedFutureValue - principal - totalContributionsMade);
+    setTotalContributions(totalContributionsMade);
 
+    // Calculate annual growth table
     const table: GrowthRecord[] = [];
-    let currentBalance = principal;
+    let yearStartBalance = principal;
 
-    for (let year = 1; year <= years; year++) {
-      const startingBalanceOfYear = currentBalance;
-      const balanceAtYearEnd = startingBalanceOfYear * Math.pow(1 + (rateDecimal / compoundingFrequency), compoundingFrequency);
-      const interestEarnedThisYear = balanceAtYearEnd - startingBalanceOfYear;
-      currentBalance = balanceAtYearEnd;
+    for (let y = 1; y <= years; y++) {
+      let balanceAtYearEnd;
+      
+      // FV of yearStartBalance after 1 year
+      let fvPrincipalComponentYear = yearStartBalance * Math.pow(1 + ratePerCompoundingPeriod, compoundingFrequency);
+      
+      let fvContributionsComponentYear = 0;
+      if (pmt > 0) {
+        for (let m = 0; m < 12; m++) { // m is month index from 0 to 11 for the current year
+          // Contribution pmt made at end of month (m+1) of this year
+          // Time remaining in this year for this contribution, in years: (12 - (m + 1)) / 12.0
+          const timeInYearsForPmtInYear = (12 - (m + 1)) / 12.0;
+          // Number of compounding periods remaining in this year for this pmt
+          const numCompPeriodsForPmtInYear = timeInYearsForPmtInYear * compoundingFrequency;
+          fvContributionsComponentYear += pmt * Math.pow(1 + ratePerCompoundingPeriod, numCompPeriodsForPmtInYear);
+        }
+      }
+      
+      balanceAtYearEnd = fvPrincipalComponentYear + fvContributionsComponentYear;
+      const contributionsThisYear = pmt * 12;
+      const interestEarnedThisYear = balanceAtYearEnd - yearStartBalance - contributionsThisYear;
       
       table.push({
-        year,
-        startingBalance: startingBalanceOfYear,
+        year: y,
+        startingBalance: yearStartBalance,
+        contributionsThisYear: contributionsThisYear,
         interestEarned: interestEarnedThisYear,
-        endingBalance: currentBalance,
+        endingBalance: balanceAtYearEnd,
       });
+      yearStartBalance = balanceAtYearEnd;
     }
     setGrowthTableData(table);
     
@@ -155,6 +203,22 @@ export default function CompoundInterestCalculator() {
                     </FormLabel>
                     <FormControl>
                       <Input type="number" step="0.01" placeholder="Ex: 1000" {...field} className="focus:ring-primary focus:border-primary"/>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="monthlyContribution"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="flex items-center gap-2 text-foreground">
+                      <PiggyBank className="h-5 w-5 text-primary" />
+                      Aporte Mensal (R$)
+                    </FormLabel>
+                    <FormControl>
+                      <Input type="number" step="0.01" placeholder="Ex: 100" {...field} className="focus:ring-primary focus:border-primary"/>
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -230,8 +294,8 @@ export default function CompoundInterestCalculator() {
         </Form>
       </Card>
 
-      {futureValue !== null && totalInterest !== null && (
-        <Card className="shadow-lg rounded-lg overflow-hidden">
+      {futureValue !== null && totalInterest !== null && totalContributions !== null && (
+        <Card className="shadow-lg rounded-lg overflow-hidden mt-8">
           <CardHeader className="bg-card">
             <CardTitle className="flex items-center gap-2 font-headline text-2xl text-primary">
               <TrendingUp className="h-6 w-6" />
@@ -239,10 +303,14 @@ export default function CompoundInterestCalculator() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-6 p-6">
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
               <div className="rounded-lg border bg-card p-4 shadow-sm">
                 <p className="text-sm text-muted-foreground">Valor Futuro Estimado</p>
                 <p className="text-3xl font-semibold text-primary">{formatCurrency(futureValue)}</p>
+              </div>
+              <div className="rounded-lg border bg-card p-4 shadow-sm">
+                <p className="text-sm text-muted-foreground">Total de Aportes</p>
+                <p className="text-3xl font-semibold text-foreground">{formatCurrency(form.getValues().principal + totalContributions)}</p>
               </div>
               <div className="rounded-lg border bg-card p-4 shadow-sm">
                 <p className="text-sm text-muted-foreground">Total de Juros Ganhos</p>
@@ -263,6 +331,7 @@ export default function CompoundInterestCalculator() {
                       <TableRow className="bg-muted/50">
                         <TableHead className="text-left font-semibold text-foreground">Ano</TableHead>
                         <TableHead className="text-right font-semibold text-foreground">Saldo Inicial</TableHead>
+                        <TableHead className="text-right font-semibold text-foreground">Aportes no Ano</TableHead>
                         <TableHead className="text-right font-semibold text-foreground">Juros Ganhos</TableHead>
                         <TableHead className="text-right font-semibold text-foreground">Saldo Final</TableHead>
                       </TableRow>
@@ -272,6 +341,7 @@ export default function CompoundInterestCalculator() {
                         <TableRow key={row.year} className="hover:bg-accent/20 transition-colors duration-150">
                           <TableCell className="text-left font-medium">{row.year}</TableCell>
                           <TableCell className="text-right">{formatCurrency(row.startingBalance)}</TableCell>
+                          <TableCell className="text-right">{formatCurrency(row.contributionsThisYear)}</TableCell>
                           <TableCell className="text-right text-green-600 dark:text-green-400">{formatCurrency(row.interestEarned)}</TableCell>
                           <TableCell className="text-right font-bold text-primary">{formatCurrency(row.endingBalance)}</TableCell>
                         </TableRow>
