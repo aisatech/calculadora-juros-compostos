@@ -86,8 +86,9 @@ const formatCurrency = (value: number) => {
 
 export default function CompoundInterestCalculator() {
   const [futureValue, setFutureValue] = React.useState<number | null>(null);
-  const [totalInterest, setTotalInterest] = React.useState<number | null>(null);
-  const [totalContributions, setTotalContributions] = React.useState<number | null>(null);
+  const [totalInterestEarned, setTotalInterestEarned] = React.useState<number | null>(null);
+  const [sumOfAllMonthlyContributions, setSumOfAllMonthlyContributions] = React.useState<number | null>(null);
+  const [totalPrincipalInvested, setTotalPrincipalInvested] = React.useState<number | null>(null);
   const [growthTableData, setGrowthTableData] = React.useState<GrowthRecord[]>([]);
   const [isCalculating, setIsCalculating] = React.useState(false);
 
@@ -105,18 +106,18 @@ export default function CompoundInterestCalculator() {
   const onSubmit: SubmitHandler<FormValues> = (data) => {
     setIsCalculating(true);
     
-    const { principal, monthlyContribution, annualRate, years, compoundingFrequency } = data;
+    const { principal: initialPrincipal, monthlyContribution, annualRate, years, compoundingFrequency } = data;
     const rateDecimal = annualRate / 100;
-    const pmt = monthlyContribution || 0;
+    const pmt = monthlyContribution || 0; // monthly payment
 
     // Calculate total future value
-    let calculatedFutureValue = principal;
+    let calculatedFutureValue = initialPrincipal;
     const ratePerCompoundingPeriod = rateDecimal / compoundingFrequency;
     const totalCompoundingPeriods = years * compoundingFrequency;
     const totalMonths = years * 12;
 
     // FV of initial principal
-    calculatedFutureValue = principal * Math.pow(1 + ratePerCompoundingPeriod, totalCompoundingPeriods);
+    calculatedFutureValue = initialPrincipal * Math.pow(1 + ratePerCompoundingPeriod, totalCompoundingPeriods);
 
     // FV of monthly contributions series
     if (pmt > 0) {
@@ -132,14 +133,18 @@ export default function CompoundInterestCalculator() {
       calculatedFutureValue += fvContributionsSeries;
     }
     
-    const totalContributionsMade = pmt * totalMonths;
+    const _sumOfAllMonthlyContributions = pmt * totalMonths;
+    const _totalPrincipalInvested = initialPrincipal + _sumOfAllMonthlyContributions;
+    const _totalInterestEarned = calculatedFutureValue - _totalPrincipalInvested;
+
     setFutureValue(calculatedFutureValue);
-    setTotalInterest(calculatedFutureValue - principal - totalContributionsMade);
-    setTotalContributions(totalContributionsMade);
+    setTotalInterestEarned(_totalInterestEarned);
+    setSumOfAllMonthlyContributions(_sumOfAllMonthlyContributions);
+    setTotalPrincipalInvested(_totalPrincipalInvested);
 
     // Calculate annual growth table
     const table: GrowthRecord[] = [];
-    let yearStartBalance = principal;
+    let yearStartBalance = initialPrincipal;
 
     for (let y = 1; y <= years; y++) {
       let balanceAtYearEnd;
@@ -294,7 +299,7 @@ export default function CompoundInterestCalculator() {
         </Form>
       </Card>
 
-      {futureValue !== null && totalInterest !== null && totalContributions !== null && (
+      {futureValue !== null && totalPrincipalInvested !== null && totalInterestEarned !== null && (
         <Card className="shadow-lg rounded-lg overflow-hidden mt-8">
           <CardHeader className="bg-card">
             <CardTitle className="flex items-center gap-2 font-headline text-2xl text-primary">
@@ -306,15 +311,15 @@ export default function CompoundInterestCalculator() {
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
               <div className="rounded-lg border bg-card p-4 shadow-sm">
                 <p className="text-sm text-muted-foreground">Valor Futuro Estimado</p>
-                <p className="text-3xl font-semibold text-primary">{formatCurrency(futureValue)}</p>
+                <p className="text-3xl font-semibold text-primary">{formatCurrency(futureValue ?? 0)}</p>
               </div>
               <div className="rounded-lg border bg-card p-4 shadow-sm">
                 <p className="text-sm text-muted-foreground">Total de Aportes</p>
-                <p className="text-3xl font-semibold text-foreground">{formatCurrency(form.getValues().principal + totalContributions)}</p>
+                <p className="text-3xl font-semibold text-foreground">{formatCurrency(totalPrincipalInvested ?? 0)}</p>
               </div>
               <div className="rounded-lg border bg-card p-4 shadow-sm">
                 <p className="text-sm text-muted-foreground">Total de Juros Ganhos</p>
-                <p className="text-3xl font-semibold text-accent-foreground">{formatCurrency(totalInterest)}</p>
+                <p className="text-3xl font-semibold text-accent-foreground">{formatCurrency(totalInterestEarned ?? 0)}</p>
               </div>
             </div>
             
@@ -357,3 +362,5 @@ export default function CompoundInterestCalculator() {
     </div>
   );
 }
+
+    
