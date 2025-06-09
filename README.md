@@ -1,5 +1,5 @@
-# Firebase Studio
+# Calculadora de juros compostos
 
-This is a NextJS starter in Firebase Studio.
+This is a NextJS project, built with TypeScript and Tailwind CSS.
 
 To get started, take a look at src/app/page.tsx.
