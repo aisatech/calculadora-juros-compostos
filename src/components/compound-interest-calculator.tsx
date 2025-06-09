@@ -64,11 +64,13 @@ const formSchema = z.object({
 
 type FormValues = z.infer<typeof formSchema>;
 
-interface GrowthRecord {
+interface MonthlyGrowthRecord {
+  monthGlobal: number;
   year: number;
+  monthInYear: number;
   startingBalance: number;
   interestEarned: number;
-  contributionsThisYear: number;
+  contribution: number;
   endingBalance: number;
 }
 
@@ -80,16 +82,17 @@ const compoundingOptions = [
   { label: "Diário", value: 365 },
 ];
 
-const formatCurrency = (value: number) => {
+const formatCurrency = (value: number | null | undefined) => {
+  if (value === null || value === undefined) return 'R$ 0,00';
   return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
 };
 
 export default function CompoundInterestCalculator() {
   const [futureValue, setFutureValue] = React.useState<number | null>(null);
-  const [totalInterestEarned, setTotalInterestEarned] = React.useState<number | null>(null);
-  const [sumOfAllMonthlyContributions, setSumOfAllMonthlyContributions] = React.useState<number | null>(null);
-  const [totalPrincipalInvested, setTotalPrincipalInvested] = React.useState<number | null>(null);
-  const [growthTableData, setGrowthTableData] = React.useState<GrowthRecord[]>([]);
+  const [totalInterestEarnedDisplay, setTotalInterestEarnedDisplay] = React.useState<number | null>(null);
+  const [totalContributionsDisplay, setTotalContributionsDisplay] = React.useState<number | null>(null); // Renamed from sumOfAllMonthlyContributions
+  const [totalPrincipalInvestedDisplay, setTotalPrincipalInvestedDisplay] = React.useState<number | null>(null);
+  const [growthTableData, setGrowthTableData] = React.useState<MonthlyGrowthRecord[]>([]);
   const [isCalculating, setIsCalculating] = React.useState(false);
 
   const form = useForm<FormValues>({
@@ -108,76 +111,60 @@ export default function CompoundInterestCalculator() {
     
     const { principal: initialPrincipal, monthlyContribution, annualRate, years, compoundingFrequency } = data;
     const rateDecimal = annualRate / 100;
-    const pmt = monthlyContribution || 0; // monthly payment
+    const pmt = monthlyContribution || 0; 
+    const totalMonths = years * 12;
 
-    // Calculate total future value
+    // Calculate total future value (using compoundingFrequency for precision)
     let calculatedFutureValue = initialPrincipal;
     const ratePerCompoundingPeriod = rateDecimal / compoundingFrequency;
     const totalCompoundingPeriods = years * compoundingFrequency;
-    const totalMonths = years * 12;
 
-    // FV of initial principal
     calculatedFutureValue = initialPrincipal * Math.pow(1 + ratePerCompoundingPeriod, totalCompoundingPeriods);
 
-    // FV of monthly contributions series
     if (pmt > 0) {
       let fvContributionsSeries = 0;
-      for (let k = 0; k < totalMonths; k++) { // k is the month index from 0 to totalMonths-1
-        // Contribution pmt is made at the end of month (k+1)
-        // Time it earns interest in years: (totalMonths - (k + 1)) / 12.0
+      for (let k = 0; k < totalMonths; k++) { 
         const timeInYearsForThisPmt = (totalMonths - (k + 1)) / 12.0;
-        // Number of compounding periods this pmt will earn interest for
         const numCompPeriodsForThisPmt = timeInYearsForThisPmt * compoundingFrequency;
         fvContributionsSeries += pmt * Math.pow(1 + ratePerCompoundingPeriod, numCompPeriodsForThisPmt);
       }
       calculatedFutureValue += fvContributionsSeries;
     }
     
-    const _sumOfAllMonthlyContributions = pmt * totalMonths;
-    const _totalPrincipalInvested = initialPrincipal + _sumOfAllMonthlyContributions;
+    const sumOfAllMonthlyContributionsOnly = pmt * totalMonths;
+    const _totalPrincipalInvested = initialPrincipal + sumOfAllMonthlyContributionsOnly;
     const _totalInterestEarned = calculatedFutureValue - _totalPrincipalInvested;
 
     setFutureValue(calculatedFutureValue);
-    setTotalInterestEarned(_totalInterestEarned);
-    setSumOfAllMonthlyContributions(_sumOfAllMonthlyContributions);
-    setTotalPrincipalInvested(_totalPrincipalInvested);
+    setTotalInterestEarnedDisplay(_totalInterestEarned);
+    setTotalContributionsDisplay(sumOfAllMonthlyContributionsOnly); // Only monthly contributions
+    setTotalPrincipalInvestedDisplay(_totalPrincipalInvested); // Principal + all monthly contributions
 
-    // Calculate annual growth table
-    const table: GrowthRecord[] = [];
-    let yearStartBalance = initialPrincipal;
+    // Calculate monthly growth table (using simple monthly rate for demonstration)
+    const monthlyTable: MonthlyGrowthRecord[] = [];
+    let currentBalanceForTable = initialPrincipal;
+    const monthlyRateForTableDisplay = rateDecimal / 12; 
 
-    for (let y = 1; y <= years; y++) {
-      let balanceAtYearEnd;
-      
-      // FV of yearStartBalance after 1 year
-      let fvPrincipalComponentYear = yearStartBalance * Math.pow(1 + ratePerCompoundingPeriod, compoundingFrequency);
-      
-      let fvContributionsComponentYear = 0;
-      if (pmt > 0) {
-        for (let m = 0; m < 12; m++) { // m is month index from 0 to 11 for the current year
-          // Contribution pmt made at end of month (m+1) of this year
-          // Time remaining in this year for this contribution, in years: (12 - (m + 1)) / 12.0
-          const timeInYearsForPmtInYear = (12 - (m + 1)) / 12.0;
-          // Number of compounding periods remaining in this year for this pmt
-          const numCompPeriodsForPmtInYear = timeInYearsForPmtInYear * compoundingFrequency;
-          fvContributionsComponentYear += pmt * Math.pow(1 + ratePerCompoundingPeriod, numCompPeriodsForPmtInYear);
-        }
-      }
-      
-      balanceAtYearEnd = fvPrincipalComponentYear + fvContributionsComponentYear;
-      const contributionsThisYear = pmt * 12;
-      const interestEarnedThisYear = balanceAtYearEnd - yearStartBalance - contributionsThisYear;
-      
-      table.push({
-        year: y,
-        startingBalance: yearStartBalance,
-        contributionsThisYear: contributionsThisYear,
-        interestEarned: interestEarnedThisYear,
-        endingBalance: balanceAtYearEnd,
+    for (let m = 1; m <= totalMonths; m++) {
+      const yearNum = Math.floor((m - 1) / 12) + 1;
+      const monthInYearNum = ((m - 1) % 12) + 1;
+
+      const interestThisMonth = currentBalanceForTable * monthlyRateForTableDisplay;
+      const contributionThisMonth = pmt;
+      const endingBalanceThisMonth = currentBalanceForTable + interestThisMonth + contributionThisMonth;
+
+      monthlyTable.push({
+        monthGlobal: m,
+        year: yearNum,
+        monthInYear: monthInYearNum,
+        startingBalance: currentBalanceForTable,
+        interestEarned: interestThisMonth,
+        contribution: contributionThisMonth,
+        endingBalance: endingBalanceThisMonth,
       });
-      yearStartBalance = balanceAtYearEnd;
+      currentBalanceForTable = endingBalanceThisMonth;
     }
-    setGrowthTableData(table);
+    setGrowthTableData(monthlyTable);
     
     setTimeout(() => setIsCalculating(false), 200); 
   };
@@ -299,7 +286,7 @@ export default function CompoundInterestCalculator() {
         </Form>
       </Card>
 
-      {futureValue !== null && totalPrincipalInvested !== null && totalInterestEarned !== null && (
+      {futureValue !== null && totalPrincipalInvestedDisplay !== null && totalInterestEarnedDisplay !== null && (
         <Card className="shadow-lg rounded-lg overflow-hidden mt-8">
           <CardHeader className="bg-card">
             <CardTitle className="flex items-center gap-2 font-headline text-2xl text-primary">
@@ -311,15 +298,15 @@ export default function CompoundInterestCalculator() {
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
               <div className="rounded-lg border bg-card p-4 shadow-sm">
                 <p className="text-sm text-muted-foreground">Valor Futuro Estimado</p>
-                <p className="text-3xl font-semibold text-primary">{formatCurrency(futureValue ?? 0)}</p>
+                <p className="text-3xl font-semibold text-primary">{formatCurrency(futureValue)}</p>
               </div>
               <div className="rounded-lg border bg-card p-4 shadow-sm">
-                <p className="text-sm text-muted-foreground">Total de Aportes</p>
-                <p className="text-3xl font-semibold text-foreground">{formatCurrency(totalPrincipalInvested ?? 0)}</p>
+                <p className="text-sm text-muted-foreground">Total Investido</p> {/* Principal + Aportes Mensais */}
+                <p className="text-3xl font-semibold text-foreground">{formatCurrency(totalPrincipalInvestedDisplay)}</p>
               </div>
               <div className="rounded-lg border bg-card p-4 shadow-sm">
                 <p className="text-sm text-muted-foreground">Total de Juros Ganhos</p>
-                <p className="text-3xl font-semibold text-accent-foreground">{formatCurrency(totalInterestEarned ?? 0)}</p>
+                <p className="text-3xl font-semibold text-accent-foreground">{formatCurrency(totalInterestEarnedDisplay)}</p>
               </div>
             </div>
             
@@ -327,26 +314,30 @@ export default function CompoundInterestCalculator() {
               <div className="mt-6">
                 <h3 className="mb-4 flex items-center gap-2 text-xl font-semibold font-headline text-primary">
                   <BarChartBig className="h-5 w-5" />
-                  Evolução do Patrimônio Anual
+                  Evolução Detalhada Mensal
                 </h3>
-                <div className={cn("overflow-x-auto rounded-md border shadow-sm", {"opacity-60 transition-opacity duration-200": isCalculating})}>
+                <div className={cn("overflow-x-auto rounded-md border shadow-sm max-h-[500px] overflow-y-auto", {"opacity-60 transition-opacity duration-200": isCalculating})}>
                   <Table>
-                    <TableCaption>Projeção do crescimento do investimento ao longo dos anos.</TableCaption>
-                    <TableHeader>
-                      <TableRow className="bg-muted/50">
+                    <TableCaption>Projeção detalhada do crescimento do seu investimento mês a mês.</TableCaption>
+                    <TableHeader className="sticky top-0 bg-muted/80 backdrop-blur-sm">
+                      <TableRow>
+                        <TableHead className="text-left font-semibold text-foreground">Mês (Global)</TableHead>
                         <TableHead className="text-left font-semibold text-foreground">Ano</TableHead>
+                        <TableHead className="text-left font-semibold text-foreground">Mês (Ano)</TableHead>
                         <TableHead className="text-right font-semibold text-foreground">Saldo Inicial</TableHead>
-                        <TableHead className="text-right font-semibold text-foreground">Aportes no Ano</TableHead>
+                        <TableHead className="text-right font-semibold text-foreground">Aporte</TableHead>
                         <TableHead className="text-right font-semibold text-foreground">Juros Ganhos</TableHead>
                         <TableHead className="text-right font-semibold text-foreground">Saldo Final</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {growthTableData.map((row) => (
-                        <TableRow key={row.year} className="hover:bg-accent/20 transition-colors duration-150">
-                          <TableCell className="text-left font-medium">{row.year}</TableCell>
+                        <TableRow key={row.monthGlobal} className="hover:bg-accent/20 transition-colors duration-150">
+                          <TableCell className="text-left font-medium">{row.monthGlobal}</TableCell>
+                          <TableCell className="text-left">{row.year}</TableCell>
+                          <TableCell className="text-left">{row.monthInYear}</TableCell>
                           <TableCell className="text-right">{formatCurrency(row.startingBalance)}</TableCell>
-                          <TableCell className="text-right">{formatCurrency(row.contributionsThisYear)}</TableCell>
+                          <TableCell className="text-right">{formatCurrency(row.contribution)}</TableCell>
                           <TableCell className="text-right text-green-600 dark:text-green-400">{formatCurrency(row.interestEarned)}</TableCell>
                           <TableCell className="text-right font-bold text-primary">{formatCurrency(row.endingBalance)}</TableCell>
                         </TableRow>
@@ -362,5 +353,3 @@ export default function CompoundInterestCalculator() {
     </div>
   );
 }
-
-    
