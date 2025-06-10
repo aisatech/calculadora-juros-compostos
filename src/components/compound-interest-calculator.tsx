@@ -5,7 +5,7 @@ import * as React from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm, type SubmitHandler } from "react-hook-form";
 import * as z from "zod";
-import { CircleDollarSign, Percent, CalendarDays, Repeat, CalculatorIcon, TrendingUp, BarChartBig, PiggyBank } from "lucide-react";
+import { CircleDollarSign, Percent, CalendarDays, Repeat, CalculatorIcon, TrendingUp, BarChartBig, PiggyBank, Info } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -42,6 +42,12 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { cn } from "@/lib/utils";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider, 
+  TooltipTrigger,
+} from "@/components/ui/tooltip";   
 
 const formSchema = z.object({
   principal: z.coerce
@@ -193,7 +199,8 @@ export default function CompoundInterestCalculator() {
                       <CircleDollarSign className="h-5 w-5 text-primary" />
                       Valor Principal (R$)
                     </FormLabel>
-                    <FormControl>
+            
+                        <FormControl>
                       <Input type="number" step="0.01" placeholder="Ex: 1000" {...field} className="focus:ring-primary focus:border-primary"/>
                     </FormControl>
                     <FormMessage />
@@ -212,6 +219,7 @@ export default function CompoundInterestCalculator() {
                     <FormControl>
                       <Input type="number" step="0.01" placeholder="Ex: 100" {...field} className="focus:ring-primary focus:border-primary"/>
                     </FormControl>
+
                     <FormMessage />
                   </FormItem>
                 )}
@@ -256,7 +264,18 @@ export default function CompoundInterestCalculator() {
                     <FormLabel className="flex items-center gap-2 text-foreground">
                       <Repeat className="h-5 w-5 text-primary" />
                       Frequência de Capitalização
+                       <TooltipProvider>
+                      <Tooltip>
+                         <TooltipContent>
+                           <p>É a frequência com que você recebe os juros.</p>
+                        </TooltipContent>
+                        <TooltipTrigger asChild>
+                          <Info className="h-3 w-3 text-primary" /> 
+                        </TooltipTrigger>
+                      </Tooltip>
+                    </TooltipProvider>
                     </FormLabel>
+                    
                     <Select onValueChange={(value) => field.onChange(Number(value))} defaultValue={String(field.value)}>
                       <FormControl>
                         <SelectTrigger className="focus:ring-primary focus:border-primary">
@@ -295,18 +314,18 @@ export default function CompoundInterestCalculator() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-6 p-6">
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-3">
-              <div className="rounded-lg border bg-card p-4 shadow-sm">
-                <p className="text-sm text-muted-foreground">Valor Futuro Estimado</p>
-                <p className="text-3xl font-semibold text-primary">{formatCurrency(futureValue)}</p>
+            <div className="flex flex-wrap justify-center gap-6">
+              <div className="rounded-lg border bg-primary p-4 shadow-sm">
+                <p className="text-sm text-card">Valor Futuro Estimado</p>
+                <p className="text-3xl font-semibold text-background">{formatCurrency(futureValue)}</p>
               </div>
               <div className="rounded-lg border bg-card p-4 shadow-sm">
                 <p className="text-sm text-muted-foreground">Total Investido</p> {/* Principal + Aportes Mensais */}
-                <p className="text-3xl font-semibold text-foreground">{formatCurrency(totalPrincipalInvestedDisplay)}</p>
+                <p className="text-3xl font-semibold text-accent">{formatCurrency(totalPrincipalInvestedDisplay)}</p>
               </div>
               <div className="rounded-lg border bg-card p-4 shadow-sm">
                 <p className="text-sm text-muted-foreground">Total de Juros Ganhos</p>
-                <p className="text-3xl font-semibold text-accent-foreground">{formatCurrency(totalInterestEarnedDisplay)}</p>
+                <p className="text-3xl font-semibold text-border">{formatCurrency(totalInterestEarnedDisplay)}</p>
               </div>
             </div>
             
